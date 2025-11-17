@@ -1,0 +1,276 @@
+# =====================================================
+# Technical Assessment - Senior Level
+# Docker Compose para Infraestructura Completa
+# =====================================================
+
+services:
+  # =====================================================
+  # PostgreSQL - Customer Service Database
+  # =====================================================
+  customer-db:
+    image: postgres:16-alpine
+    container_name: customer-db
+    environment:
+      POSTGRES_DB: customer_db
+      POSTGRES_USER: customer_user
+      POSTGRES_PASSWORD: customer_pass
+      PGDATA: /data/postgres
+    volumes:
+      # Script de inicialización (se ejecuta solo en primer arranque)
+      - ./database/init-customer-db.sql:/docker-entrypoint-initdb.d/init.sql
+      # Volumen temporal (se pierde al eliminar el contenedor)
+      - customer-db-data:/data/postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - dpilaloa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_user -d customer_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =====================================================
+  # PostgreSQL - Account Service Database
+  # =====================================================
+  account-db:
+    image: postgres:16-alpine
+    container_name: account-db
+    environment:
+      POSTGRES_DB: account_db
+      POSTGRES_USER: account_user
+      POSTGRES_PASSWORD: account_pass
+      PGDATA: /data/postgres
+    volumes:
+      # Script de inicialización (se ejecuta solo en primer arranque)
+      - ./database/init-account-db.sql:/docker-entrypoint-initdb.d/init.sql
+      # Volumen temporal (se pierde al eliminar el contenedor)
+      - account-db-data:/data/postgres
+    ports:
+      - "5433:5432"
+    networks:
+      - dpilaloa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U account_user -d account_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =====================================================
+  # Zookeeper - Requerido por Kafka
+  # =====================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: srvr,mntr,ruok
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - dpilaloa-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo srvr | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =====================================================
+  # Kafka - Message Broker para Event-Driven Architecture
+  # =====================================================
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"  # Disabled - topics created explicitly
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports:
+      - "29092:29092"
+    networks:
+      - dpilaloa-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # =====================================================
+  # Kafka Init - Crea topics automáticamente al iniciar
+  # =====================================================
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: >
+      bash -c "
+      echo 'Waiting for Kafka to be ready...' &&
+      sleep 5 &&
+      echo 'Creating Kafka topics for all microservices...' &&
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic banking.customer.events --partitions 3 --replication-factor 1 --config retention.ms=604800000 --config cleanup.policy=delete --config compression.type=lz4 &&
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic banking.account.events --partitions 4 --replication-factor 1 --config retention.ms=604800000 --config cleanup.policy=delete --config compression.type=lz4 &&
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --topic banking.movement.events --partitions 6 --replication-factor 1 --config retention.ms=604800000 --config cleanup.policy=delete --config compression.type=lz4 &&
+      echo 'All Kafka topics created successfully!' &&
+      echo 'Available topics:' &&
+      kafka-topics --list --bootstrap-server kafka:9092
+      "
+    networks:
+      - dpilaloa-network
+    restart: "no"
+
+  # =====================================================
+  # API Customer Service - Microservicio de Clientes
+  # =====================================================
+  api-customer-service:
+    build:
+      context: ./api-customer-service
+      dockerfile: Dockerfile
+    container_name: api-customer-service
+    depends_on:
+      customer-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      # Server Configuration
+      SERVER_PORT: 8081
+
+      # Database Configuration (R2DBC)
+      SPRING_R2DBC_URL: r2dbc:postgresql://customer-db:5432/customer_db
+      SPRING_R2DBC_USERNAME: customer_user
+      SPRING_R2DBC_PASSWORD: customer_pass
+
+      # Kafka Configuration
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_KAFKA_PRODUCER_TOPIC_CUSTOMER: banking.customer.events
+
+      # JWT Configuration
+      JWT_SECRET: dpilaloa-dev-jwt-secret-key-for-development-purposes-only
+      JWT_EXPIRATION: 86400000
+
+      # Security Configuration
+      SECURITY_CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+
+      # Logging
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_DPILALOA: DEBUG
+
+      # Actuator
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+    ports:
+      - "8081:8081"
+    networks:
+      - dpilaloa-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # =====================================================
+  # API Account Service - Microservicio de Cuentas
+  # =====================================================
+  api-account-service:
+    build:
+      context: ./api-account-service
+      dockerfile: Dockerfile
+    container_name: api-account-service
+    depends_on:
+      account-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      api-customer-service:
+        condition: service_healthy
+    environment:
+      # Server Configuration
+      SERVER_PORT: 8082
+
+      # Database Configuration (R2DBC)
+      SPRING_R2DBC_URL: r2dbc:postgresql://account-db:5432/account_db
+      SPRING_R2DBC_USERNAME: account_user
+      SPRING_R2DBC_PASSWORD: account_pass
+
+      # Kafka Configuration
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_KAFKA_PRODUCER_TOPIC_ACCOUNT: banking.account.events
+      SPRING_KAFKA_PRODUCER_TOPIC_MOVEMENT: banking.movement.events
+
+      # Customer Service Integration (WebClient)
+      CUSTOMER_SERVICE_URL: http://api-customer-service:8081
+
+      # JWT Configuration
+      JWT_SECRET: dpilaloa-dev-jwt-secret-key-for-development-purposes-only
+      JWT_EXPIRATION: 86400000
+
+      # Security Configuration
+      SECURITY_CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+
+      # Logging
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_DPILALOA: DEBUG
+
+      # Actuator
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+    ports:
+      - "8082:8082"
+    networks:
+      - dpilaloa-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+
+# =====================================================
+# Volúmenes temporales (tmpfs - se pierden al bajar el contenedor)
+# =====================================================
+volumes:
+  customer-db-data:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  account-db-data:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  zookeeper-data:
+    driver: local
+  zookeeper-logs:
+    driver: local
+  kafka-data:
+    driver: local
+
+# =====================================================
+# Red personalizada
+# =====================================================
+networks:
+  dpilaloa-network:
+    driver: bridge
+    name: dpilaloa-network
