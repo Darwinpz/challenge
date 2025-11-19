@@ -38,11 +38,20 @@ import java.util.Map;
 @Configuration
 public class KafkaConsumerConfig {
 
+    // Kafka connection settings
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
 
     @Value("${spring.kafka.consumer.group-id:account-service-group}")
     private String groupId;
+
+    // Kafka consumer configuration constants
+    private static final int AUTO_COMMIT_INTERVAL_MS = 1000;
+    private static final int SESSION_TIMEOUT_MS = 30000;
+    private static final int HEARTBEAT_INTERVAL_MS = 10000;
+    private static final int CONCURRENT_CONSUMERS = 3;
+    private static final String TRUSTED_PACKAGES = "com.dpilaloa.*";
+    private static final String OFFSET_RESET_STRATEGY = "earliest";
 
     /**
      * Consumer Factory for CustomerEventDTO
@@ -66,18 +75,18 @@ public class KafkaConsumerConfig {
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class.getName());
         config.put(JsonDeserializer.VALUE_DEFAULT_TYPE, CustomerEventDTO.class.getName());
-        config.put(JsonDeserializer.TRUSTED_PACKAGES, "com.dpilaloa.*");
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, TRUSTED_PACKAGES);
 
         // Auto-commit configuration
         config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
-        config.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, 1000);
+        config.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, AUTO_COMMIT_INTERVAL_MS);
 
         // Offset reset strategy (earliest = start from beginning if no offset found)
-        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OFFSET_RESET_STRATEGY);
 
         // Session timeout and heartbeat
-        config.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 30000);
-        config.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000);
+        config.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, SESSION_TIMEOUT_MS);
+        config.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, HEARTBEAT_INTERVAL_MS);
 
         return new DefaultKafkaConsumerFactory<>(config);
     }
@@ -95,7 +104,7 @@ public class KafkaConsumerConfig {
         factory.setConsumerFactory(consumerFactory());
 
         // Number of concurrent consumers (adjust based on topic partitions)
-        factory.setConcurrency(3);
+        factory.setConcurrency(CONCURRENT_CONSUMERS);
 
         // Auto-startup (set to false if you want manual control)
         factory.setAutoStartup(true);

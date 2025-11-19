@@ -42,4 +42,15 @@ public interface CreateAccountUseCase {
      * <p>
      */
     Mono<Account> createAccount(Account account);
+
+    /**
+     * Create account without customer validation
+     * <p>
+     * USED BY: Kafka consumer when customer.created event received
+     * Skips customer validation because customer was just created
+     *
+     * @param account Account to create
+     * @return Mono<Account> Created account
+     */
+    Mono<Account> createAccountWithoutCustomerValidation(Account account);
 }

@@ -233,26 +233,43 @@ public class MovementController implements MovementsApi {
             );
         }
 
-        // Collect and return
+        // Apply pagination (skip + limit) - use final variables for lambda
+        final int finalPageNumber = (page != null && page >= 0) ? page : 0;
+        final int finalPageSize = (size != null && size > 0 && size <= 100) ? size : 20;
+        final int skip = finalPageNumber * finalPageSize;
+        final int limit = finalPageSize;
+
+        // Count total elements for pagination metadata
         return movementsFlux
                 .map(movementApiMapper::toResponse)
                 .collectList()
-                .map(movements -> {
-                    // TODO: Implement real pagination (currently returns all results)
+                .map(allMovements -> {
+                    int totalElements = allMovements.size();
+                    int totalPages = (int) Math.ceil((double) totalElements / finalPageSize);
+
+                    // Apply pagination: skip first N elements and take limit
+                    java.util.List<MovementResponse> paginatedMovements = allMovements.stream()
+                            .skip(skip)
+                            .limit(limit)
+                            .collect(java.util.stream.Collectors.toList());
+
                     PageMetadata pageMetadata = new PageMetadata()
-                            .size(movements.size())
-                            .number(page != null ? page : 0)
-                            .totalElements(movements.size())
-                            .totalPages(movements.isEmpty() ? 0 : 1);
+                            .size(finalPageSize)
+                            .number(finalPageNumber)
+                            .totalElements(totalElements)
+                            .totalPages(totalPages);
 
                     MovementPageResponse pageResponse = new MovementPageResponse()
-                            .content(movements)
+                            .content(paginatedMovements)
                             .page(pageMetadata);
+
+                    log.debug("Retrieved {} movements (page {}/{}, total: {}) [requestId={}]",
+                            paginatedMovements.size(), finalPageNumber, totalPages, totalElements, xRequestId);
 
                     return ResponseEntity.ok(pageResponse);
                 })
-                .doOnSuccess(response -> log.debug("Retrieved {} movements [requestId={}]",
-                        response.getBody().getContent().size(), xRequestId));
+                .doOnSuccess(response -> log.debug("Pagination applied: page={}, size={}, returned {} items [requestId={}]",
+                        finalPageNumber, finalPageSize, response.getBody().getContent().size(), xRequestId));
     }
 
     /**
