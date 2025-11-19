@@ -7,7 +7,6 @@ import com.dpilaloa.api.customer.service.infrastructure.adapter.output.persisten
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +15,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestConstructor;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -30,8 +30,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DataR2dbcTest
 @Import(CustomerIntegrationTest.TestConfig.class)
 @Testcontainers
+@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 @DisplayName("Customer Integration Test")
 class CustomerIntegrationTest {
+
+
+    private final PersonR2dbcRepository personRepository;
+    private final CustomerR2dbcRepository customerRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    private UUID testPersonId;
+    private UUID testCustomerId;
+
+    CustomerIntegrationTest(PersonR2dbcRepository personRepository, CustomerR2dbcRepository customerRepository, PasswordEncoder passwordEncoder) {
+        this.personRepository = personRepository;
+        this.customerRepository = customerRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @TestConfiguration
     static class TestConfig {
@@ -56,17 +71,6 @@ class CustomerIntegrationTest {
         registry.add("spring.r2dbc.password", postgres::getPassword);
     }
 
-    @Autowired
-    private PersonR2dbcRepository personRepository;
-
-    @Autowired
-    private CustomerR2dbcRepository customerRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    private UUID testPersonId;
-    private UUID testCustomerId;
 
     @AfterEach
     void cleanup() {

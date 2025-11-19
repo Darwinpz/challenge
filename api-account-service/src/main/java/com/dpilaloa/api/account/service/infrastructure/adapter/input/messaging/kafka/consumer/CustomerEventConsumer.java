@@ -1,7 +1,7 @@
 package com.dpilaloa.api.account.service.infrastructure.adapter.input.messaging.kafka.consumer;
 
 import com.dpilaloa.api.account.service.application.port.input.DeleteAccountUseCase;
-import com.dpilaloa.api.account.service.application.service.AccountService;
+import com.dpilaloa.api.account.service.application.service.AccountCreationService;
 import com.dpilaloa.api.account.service.domain.model.Account;
 import com.dpilaloa.api.account.service.domain.model.AccountType;
 import com.dpilaloa.api.account.service.infrastructure.adapter.input.messaging.kafka.dto.CustomerEventDTO;
@@ -49,7 +49,7 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class CustomerEventConsumer {
 
-    private final AccountService accountService;
+    private final AccountCreationService accountCreationService;
     private final DeleteAccountUseCase deleteAccountUseCase;
 
     /**
@@ -135,7 +135,7 @@ public class CustomerEventConsumer {
                 .state(true)
                 .build();
 
-        return accountService.createAccountWithoutCustomerValidation(defaultAccount)
+        return accountCreationService.createAccountWithoutCustomerValidation(defaultAccount)
                 .doOnSuccess(createdAccount -> log.info(
                         "Default AHORRO account created successfully: accountNumber={}, customerId={}",
                         createdAccount.getAccountNumber(), event.getCustomerId()))

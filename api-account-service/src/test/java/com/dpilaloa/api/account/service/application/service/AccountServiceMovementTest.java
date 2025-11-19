@@ -67,7 +67,7 @@ class AccountServiceMovementTest {
     private EventPublisherPort eventPublisherPort;
 
     @InjectMocks
-    private AccountService accountService;
+    private MovementProcessingService movementProcessingService;
 
     private Account testAccount;
     private Movement testMovement;
@@ -118,7 +118,7 @@ class AccountServiceMovementTest {
         when(eventPublisherPort.publish(anyString(), anyString(), any())).thenReturn(Mono.empty());
 
         // When: Create credit movement
-        Mono<Movement> result = accountService.createMovement(testMovement);
+        Mono<Movement> result = movementProcessingService.createMovement(testMovement);
 
         // Then: Movement should be created with correct balance tracking
         StepVerifier.create(result)
@@ -164,7 +164,7 @@ class AccountServiceMovementTest {
         when(eventPublisherPort.publish(anyString(), anyString(), any())).thenReturn(Mono.empty());
 
         // When: Create debit movement
-        Mono<Movement> result = accountService.createMovement(testMovement);
+        Mono<Movement> result = movementProcessingService.createMovement(testMovement);
 
         // Then: Movement should be created with decreased balance
         StepVerifier.create(result)
@@ -198,7 +198,7 @@ class AccountServiceMovementTest {
         when(accountRepositoryPort.findByAccountNumber(1001L)).thenReturn(Mono.just(testAccount));
 
         // When: Attempt to create debit movement with insufficient balance
-        Mono<Movement> result = accountService.createMovement(testMovement);
+        Mono<Movement> result = movementProcessingService.createMovement(testMovement);
 
         // Then: Should throw InsufficientBalanceException
         StepVerifier.create(result)
@@ -226,7 +226,7 @@ class AccountServiceMovementTest {
         when(accountRepositoryPort.findByAccountNumber(1001L)).thenReturn(Mono.empty());
 
         // When: Attempt to create movement for non-existent account
-        Mono<Movement> result = accountService.createMovement(testMovement);
+        Mono<Movement> result = movementProcessingService.createMovement(testMovement);
 
         // Then: Should throw AccountNotFoundException
         StepVerifier.create(result)
@@ -255,7 +255,7 @@ class AccountServiceMovementTest {
         when(accountRepositoryPort.findByAccountNumber(1001L)).thenReturn(Mono.just(testAccount));
 
         // When: Attempt to create movement for inactive account
-        Mono<Movement> result = accountService.createMovement(testMovement);
+        Mono<Movement> result = movementProcessingService.createMovement(testMovement);
 
         // Then: Should throw AccountNotActiveException
         StepVerifier.create(result)
