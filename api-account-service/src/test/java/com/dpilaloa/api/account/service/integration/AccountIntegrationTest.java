@@ -5,10 +5,10 @@ import com.dpilaloa.api.account.service.infrastructure.adapter.output.persistenc
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestConstructor;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -23,8 +23,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataR2dbcTest
 @Testcontainers
+@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 @DisplayName("Account Integration Test")
 class AccountIntegrationTest {
+
+    private final AccountR2dbcRepository accountRepository;
+    private Long testAccountNumber;
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -32,6 +36,10 @@ class AccountIntegrationTest {
             .withUsername("test")
             .withPassword("test")
             .withInitScript("schema.sql");
+
+    AccountIntegrationTest(AccountR2dbcRepository accountRepository) {
+        this.accountRepository = accountRepository;
+    }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -41,10 +49,7 @@ class AccountIntegrationTest {
         registry.add("spring.r2dbc.password", postgres::getPassword);
     }
 
-    @Autowired
-    private AccountR2dbcRepository accountRepository;
 
-    private Long testAccountNumber;
 
     @AfterEach
     void cleanup() {
