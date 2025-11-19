@@ -126,6 +126,33 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle ServiceUnavailableException
+     * Returns 503 SERVICE UNAVAILABLE
+     * <p>
+     * This exception is thrown when:
+     * - Circuit Breaker is OPEN (Customer Service is down)
+     * - External service timeout
+     * - Network errors when calling external services
+     * <p>
+     * HTTP 503 indicates a transient failure - client should retry later.
+     */
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleServiceUnavailable(
+            ServiceUnavailableException ex,
+            ServerWebExchange exchange
+    ) {
+        log.error("Service unavailable: {}", ex.getMessage());
+
+        ErrorResponse error = createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                ex.getMessage(),
+                exchange.getRequest().getPath().value()
+        );
+
+        return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error));
+    }
+
+    /**
      * Handle AccountNotActiveException
      * Returns 400 BAD REQUEST
      */

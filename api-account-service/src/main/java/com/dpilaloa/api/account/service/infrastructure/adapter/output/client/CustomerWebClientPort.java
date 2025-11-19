@@ -174,6 +174,44 @@ public class CustomerWebClientPort implements CustomerServiceClientPort {
                                     customerId, error.getMessage());
                         })
                 )
+                // Handle Resilience4j errors BEFORE applying operators
+                .onErrorMap(error -> {
+                    // Don't wrap business exceptions
+                    if (error instanceof CustomerNotFoundException ||
+                        error instanceof CustomerNotActiveException) {
+                        return error;
+                    }
+
+                    // Circuit Breaker OPEN
+                    if (error instanceof io.github.resilience4j.circuitbreaker.CallNotPermittedException) {
+                        log.error("Circuit Breaker OPEN: Customer Service unavailable (customerId={})", customerId);
+                        return new com.dpilaloa.api.account.service.domain.exception.ServiceUnavailableException(
+                            "Customer Service", "Circuit Breaker is OPEN - service is temporarily unavailable");
+                    }
+
+                    // Timeout errors
+                    if (error instanceof java.util.concurrent.TimeoutException ||
+                        error.getCause() instanceof java.util.concurrent.TimeoutException) {
+                        log.error("Timeout calling Customer Service (customerId={})", customerId);
+                        return new com.dpilaloa.api.account.service.domain.exception.ServiceUnavailableException(
+                            "Customer Service", "Request timeout");
+                    }
+
+                    // Connection errors (service down)
+                    if (error.getMessage() != null &&
+                        (error.getMessage().contains("Connection refused") ||
+                         error.getMessage().contains("Connection reset"))) {
+                        log.error("Connection error to Customer Service (customerId={}): {}", customerId, error.getMessage());
+                        return new com.dpilaloa.api.account.service.domain.exception.ServiceUnavailableException(
+                            "Customer Service", "Service is down or unreachable");
+                    }
+
+                    // Generic network/infrastructure errors
+                    log.error("Unexpected error calling Customer Service (customerId={}): {}",
+                        customerId, error.getClass().getSimpleName());
+                    return new com.dpilaloa.api.account.service.domain.exception.ServiceUnavailableException(
+                        "Customer Service", "Temporary communication error");
+                })
                 // Apply Resilience4j operators (non-invasive):
                 // 1. TimeLimiter: Timeout for the entire operation
                 .transformDeferred(TimeLimiterOperator.of(customerServiceTimeLimiter))

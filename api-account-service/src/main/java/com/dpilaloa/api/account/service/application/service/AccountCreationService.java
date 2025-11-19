@@ -111,19 +111,26 @@ public class AccountCreationService implements CreateAccountUseCase {
 
     /**
      * Validate customer exists and is active
+     * <p>
+     * SEPARATION OF CONCERNS:
+     * - CustomerWebClientPort (Infrastructure layer) handles:
+     *   - Circuit Breaker errors → ServiceUnavailableException
+     *   - Timeout errors → ServiceUnavailableException
+     *   - Connection errors → ServiceUnavailableException
+     * <p>
+     * - AccountCreationService (Application layer) only handles:
+     *   - Business validation (customer exists, customer active)
+     *   - All infrastructure concerns are encapsulated in the adapter
+     * <p>
+     * EXCEPTIONS PROPAGATED:
+     * - CustomerNotFoundException (404)
+     * - CustomerNotActiveException (400)
+     * - ServiceUnavailableException (503) - from adapter
      */
     private Mono<Customer> validateCustomer(UUID customerId) {
         return customerServiceClientPort.validateCustomer(customerId)
                 .doOnSuccess(customer -> log.debug("Customer validated: customerId={}, name={}",
-                        customerId, customer.getName()))
-                .onErrorResume(error -> {
-                    if (error instanceof CustomerNotFoundException ||
-                        error instanceof CustomerNotActiveException) {
-                        return Mono.error(error);
-                    }
-                    log.error("Error validating customer {}: {}", customerId, error.getMessage());
-                    return Mono.error(new CustomerNotFoundException(customerId));
-                });
+                        customerId, customer.getName()));
     }
 
     /**
