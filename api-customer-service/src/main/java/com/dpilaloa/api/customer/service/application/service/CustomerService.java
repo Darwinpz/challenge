@@ -319,5 +319,49 @@ public class CustomerService implements
                 .doOnError(error -> log.error("Error deleting customer: {}", error.getMessage()));
     }
 
+    // =====================================================
+    // PRIVATE EVENT PUBLISHING METHODS
+    // =====================================================
+
+    /**
+     * Publish customer events to Kafka.
+     * DESIGN PATTERN: Event-Driven Architecture
+     *
+     * @param customer      Customer domain model
+     * @param eventType     Type of event (created, updated, deleted)
+     * @param correlationId Correlation ID from HTTP header for distributed tracing
+     */
+    private Mono<Void> publishCustomerEvent(Customer customer, String eventType, String correlationId) {
+        CustomerEventDTO.CustomerEventDTOBuilder eventBuilder = CustomerEventDTO.builder()
+                .eventId(UUID.randomUUID().toString())
+                .eventType("customer." + eventType)
+                .timestamp(LocalDateTime.now())
+                .correlationId(correlationId)
+                .customerId(customer.getCustomerId())
+                .name(customer.getName())
+                .identification(customer.getIdentification());
+
+        // Set event-specific fields
+        switch (eventType) {
+            case "created":
+                eventBuilder.state(customer.getState()).createdAt(customer.getCreatedAt());
+                break;
+            case "updated":
+                eventBuilder.state(customer.getState()).updatedAt(customer.getUpdatedAt());
+                break;
+            case "deleted":
+                eventBuilder.deletedAt(LocalDateTime.now());
+                break;
+            default:
+                return Mono.error(new IllegalArgumentException("Unknown event type: " + eventType));
+        }
+
+        CustomerEventDTO event = eventBuilder.build();
+
+        return eventPublisher.publishCustomerEvent(event)
+                .doOnSuccess(v -> log.info("Published customer.{} event: {} with correlation-id: {}",
+                        eventType, customer.getCustomerId(), correlationId))
+                .doOnError(error -> log.error("Error publishing customer.{} event: {}", eventType, error.getMessage()));
+    }
 
 }
