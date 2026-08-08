@@ -364,4 +364,8 @@ public class CustomerService implements
                 .doOnError(error -> log.error("Error publishing customer.{} event: {}", eventType, error.getMessage()));
     }
 
+    private String testSonar() {
+            return "test";
+    }
+
 }
