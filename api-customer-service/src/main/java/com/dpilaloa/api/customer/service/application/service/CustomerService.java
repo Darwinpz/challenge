@@ -365,7 +365,7 @@ public class CustomerService implements
     }
 
     private String testSonar() {
-            return "test";
+        return "Nuevo test";
     }
 
 }
